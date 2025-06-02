@@ -53,8 +53,8 @@ export default function App() {
     setDateReadable(data.date.readable);
 
     try {
-      const fajrTimeStr = data.timings.Fajr; // e.g. "03:50"
-      const dateStr = data.date.readable; // e.g. "02 Jun 2025"
+      const fajrTimeStr = data.timings.Fajr; 
+      const dateStr = data.date.readable; 
       const [day, monthShort, year] = dateStr.split(" ");
       const month = DateTime.fromFormat(monthShort, "LLL").month;
 
@@ -91,7 +91,7 @@ export default function App() {
       { zone: timezone }
     );
 
-    return dt.toLocaleString(DateTime.TIME_SIMPLE); // Example: "3:50 AM"
+    return dt.toLocaleString(DateTime.TIME_SIMPLE); 
   };
 
   const formatTime12 = (dateTime) => {
