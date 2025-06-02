@@ -8,8 +8,18 @@ export default function App() {
   const [cityTimes, setCityTimes] = useState(null);
   const [pakistanFajrTime, setPakistanFajrTime] = useState(null);
   const [cityTimezone, setCityTimezone] = useState("");
+  const [dateReadable, setDateReadable] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const PrimaryButton = ({ children, ...props }) => (
+    <button
+      className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition duration-300"
+      {...props}
+    >
+      {children}
+    </button>
+  );
 
   const fetchPrayerTimes = async (cityName) => {
     try {
@@ -28,6 +38,7 @@ export default function App() {
     setError("");
     setCityTimes(null);
     setPakistanFajrTime(null);
+    setDateReadable("");
 
     const data = await fetchPrayerTimes(city);
     if (!data) {
@@ -39,36 +50,58 @@ export default function App() {
     setCityTimes(data.timings);
     setCityTimezone(data.meta.timezone);
     setSearchedCity(city);
+    setDateReadable(data.date.readable);
 
-    // Parse the date string from API (like "02 Jun 2025")
-    const dateStr = data.date.readable; // e.g. "02 Jun 2025"
+    try {
+      const fajrTimeStr = data.timings.Fajr; // e.g. "03:50"
+      const dateStr = data.date.readable; // e.g. "02 Jun 2025"
+      const [day, monthShort, year] = dateStr.split(" ");
+      const month = DateTime.fromFormat(monthShort, "LLL").month;
 
-    // Parse Fajr time string (like "03:50")
-    const fajrTimeStr = data.timings.Fajr;
+      const fajrDateInCity = DateTime.fromObject(
+        {
+          year: parseInt(year),
+          month: month,
+          day: parseInt(day),
+          hour: parseInt(fajrTimeStr.split(":")[0]),
+          minute: parseInt(fajrTimeStr.split(":")[1]),
+        },
+        { zone: data.meta.timezone }
+      );
 
-    // Combine date and time in city timezone using Luxon
-    const fajrDateTimeInCity = DateTime.fromFormat(
-      `${dateStr} ${fajrTimeStr}`,
-      "dd LLL yyyy HH:mm",
-      { zone: data.meta.timezone }
-    );
-
-    if (!fajrDateTimeInCity.isValid) {
-      setError("Invalid fajr date/time from API.");
-      setLoading(false);
-      return;
+      const fajrDateInPakistan = fajrDateInCity.setZone("Asia/Karachi");
+      setPakistanFajrTime(fajrDateInPakistan);
+    } catch {
+      setPakistanFajrTime(null);
     }
 
-    // Convert fajr time from city timezone to Pakistan timezone
-    const fajrInPakistan = fajrDateTimeInCity.setZone("Asia/Karachi");
-
-    setPakistanFajrTime(fajrInPakistan);
     setLoading(false);
+  };
+
+  const formatPrayerTime = (timeStr, timezone, dateStr) => {
+    if (!timeStr || !timezone || !dateStr) return "";
+
+    const [day, monthShort, year] = dateStr.split(" ");
+    const month = DateTime.fromFormat(monthShort, "LLL").month;
+
+    const [hour, minute] = timeStr.split(":").map(Number);
+
+    const dt = DateTime.fromObject(
+      { year: parseInt(year), month, day: parseInt(day), hour, minute },
+      { zone: timezone }
+    );
+
+    return dt.toLocaleString(DateTime.TIME_SIMPLE); // Example: "3:50 AM"
   };
 
   const formatTime12 = (dateTime) => {
     if (!dateTime) return "";
-    return dateTime.toLocaleString(DateTime.TIME_SIMPLE);
+    const jsDate = dateTime.toJSDate();
+    return jsDate.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
   return (
@@ -90,13 +123,9 @@ export default function App() {
           className="w-full px-5 py-3 rounded-lg border border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:border-blue-600 text-gray-900 placeholder-gray-400 shadow-sm transition duration-300"
         />
 
-        <button
-          onClick={fetchTimes}
-          disabled={!city || loading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition duration-300"
-        >
+        <PrimaryButton onClick={fetchTimes} disabled={!city || loading}>
           {loading ? "Searching..." : "Get Times"}
-        </button>
+        </PrimaryButton>
       </div>
 
       {error && (
@@ -105,7 +134,6 @@ export default function App() {
 
       {cityTimes && (
         <div className="flex flex-col sm:flex-row sm:justify-between gap-8 mt-8 w-full max-w-5xl">
-          {/* Left side - Prayer times */}
           <div className="bg-white rounded-3xl shadow-xl p-6 w-full sm:w-[48%]">
             <h2 className="text-2xl font-bold text-center text-blue-800 mb-2">
               🕌 {searchedCity} Prayer Times
@@ -120,18 +148,19 @@ export default function App() {
                   className="flex flex-col items-center justify-center bg-blue-50 rounded-xl py-4 px-6 shadow hover:shadow-lg transition"
                 >
                   <h3 className="text-xl font-semibold text-blue-700 mb-1">{prayer}</h3>
-                  <p className="text-2xl font-mono text-gray-900">{cityTimes[prayer]}</p>
+                  <p className="text-2xl font-mono text-gray-900">
+                    {formatPrayerTime(cityTimes[prayer], cityTimezone, dateReadable)}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Right side - Show only if city is NOT Pakistan timezone */}
-          {cityTimezone !== "Asia/Karachi" && (
+          {cityTimezone !== "Asia/Karachi" && pakistanFajrTime && (
             <div className="bg-white rounded-3xl shadow-xl p-6 w-full sm:w-[48%] flex flex-col justify-center items-center text-center text-lg font-semibold text-gray-900">
               <p>
                 Jab <span className="font-bold text-blue-700">{searchedCity}</span> mein Fajr{" "}
-                <span className="font-mono text-blue-700 text-xl">{cityTimes.Fajr}</span> ho raha
+                <span className="font-mono text-blue-700 text-xl">{formatPrayerTime(cityTimes.Fajr, cityTimezone, dateReadable)}</span> ho raha
                 ho, to Pakistan mein 🕓{" "}
                 <span className="font-mono text-blue-700 text-xl">
                   {formatTime12(pakistanFajrTime)}
