@@ -159,7 +159,7 @@ export default function App() {
           {cityTimezone !== "Asia/Karachi" && pakistanFajrTime && (
             <div className="bg-white rounded-3xl shadow-xl p-6 w-full sm:w-[48%] flex flex-col justify-center items-center text-center text-lg font-semibold text-gray-900">
               <p>
-                Jab <span className="font-bold text-blue-700">{searchedCity}</span> mein Fajr{" "}
+                Jab <span className="font-bold text-blue-700">{searchedCity}</span> mein {" "}
                 <span className="font-mono text-blue-700 text-xl">{formatPrayerTime(cityTimes.Fajr, cityTimezone, dateReadable)}</span> ho raha
                 ho, to Pakistan mein 🕓{" "}
                 <span className="font-mono text-blue-700 text-xl">
