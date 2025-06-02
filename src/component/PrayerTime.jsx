@@ -1,126 +1,74 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import axios from "axios";
+import { DateTime } from "luxon";
 
 export default function App() {
-  const inputRef = useRef(null);
-
-  const PrimaryButton = ({ children, ...props }) => (
-    <button
-      className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition duration-300"
-      {...props}
-    >
-      {children}
-    </button>
-  );
-
   const [city, setCity] = useState("");
   const [searchedCity, setSearchedCity] = useState("");
   const [cityTimes, setCityTimes] = useState(null);
-  const [pakistanTimes, setPakistanTimes] = useState(null);
+  const [pakistanFajrTime, setPakistanFajrTime] = useState(null);
+  const [cityTimezone, setCityTimezone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchPrayerTimes = async () => {
-    setLoading(true);
-    setError("");
+  const fetchPrayerTimes = async (cityName) => {
     try {
-      const cityResponse = await axios.get(
-        `https://api.aladhan.com/v1/timingsByCity`,
-        {
-          params: {
-            city,
-            country: "",
-            method: 2,
-          },
-        }
+      const res = await axios.get(
+        `https://api.aladhan.com/v1/timingsByCity?city=${cityName}&country=&method=2`
       );
-
-      const pkResponse = await axios.get(
-        `https://api.aladhan.com/v1/timingsByCity`,
-        {
-          params: {
-            city: "Lahore",
-            country: "Pakistan",
-            method: 2,
-          },
-        }
-      );
-
-      setCityTimes({
-        timings: cityResponse.data.data.timings,
-        timezone: cityResponse.data.data.meta.timezone,
-      });
-
-      setPakistanTimes({
-        timings: pkResponse.data.data.timings,
-        timezone: pkResponse.data.data.meta.timezone,
-      });
-
-      setSearchedCity(city);
-    } catch (err) {
-      setError("Could not fetch prayer times. Try a different city.");
-      setCityTimes(null);
-      setPakistanTimes(null);
-    } finally {
-      setLoading(false);
-      inputRef.current?.focus();
+      return res.data.data;
+    } catch {
+      return null;
     }
   };
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  const fetchTimes = async () => {
+    if (!city) return;
+    setLoading(true);
+    setError("");
+    setCityTimes(null);
+    setPakistanFajrTime(null);
 
-  const formatTimeTo12Hour = (time24) => {
-    const [hour, minute] = time24.split(":");
-    const date = new Date();
-    date.setHours(+hour);
-    date.setMinutes(+minute);
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    });
+    const data = await fetchPrayerTimes(city);
+    if (!data) {
+      setError("City not found. Please check the spelling or try another city.");
+      setLoading(false);
+      return;
+    }
+
+    setCityTimes(data.timings);
+    setCityTimezone(data.meta.timezone);
+    setSearchedCity(city);
+
+    // Parse the date string from API (like "02 Jun 2025")
+    const dateStr = data.date.readable; // e.g. "02 Jun 2025"
+
+    // Parse Fajr time string (like "03:50")
+    const fajrTimeStr = data.timings.Fajr;
+
+    // Combine date and time in city timezone using Luxon
+    const fajrDateTimeInCity = DateTime.fromFormat(
+      `${dateStr} ${fajrTimeStr}`,
+      "dd LLL yyyy HH:mm",
+      { zone: data.meta.timezone }
+    );
+
+    if (!fajrDateTimeInCity.isValid) {
+      setError("Invalid fajr date/time from API.");
+      setLoading(false);
+      return;
+    }
+
+    // Convert fajr time from city timezone to Pakistan timezone
+    const fajrInPakistan = fajrDateTimeInCity.setZone("Asia/Karachi");
+
+    setPakistanFajrTime(fajrInPakistan);
+    setLoading(false);
   };
 
-  const renderPrayerCards = (prayerTimes, title, timezone) => {
-    const now = new Date();
-    const localTime = now.toLocaleString("en-US", {
-      timeZone: timezone,
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    });
-    const localDate = now.toLocaleDateString("en-GB", {
-      timeZone: timezone,
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-
-    return (
-      <div className="bg-white rounded-3xl shadow-xl p-6 w-full sm:w-[48%]">
-        <h2 className="text-2xl font-bold text-center text-blue-800 mb-2">{title}</h2>
-        <p className="text-center text-gray-600 mb-1 font-medium">🕒 Timezone: {timezone}</p>
-        <p className="text-center text-gray-500 mb-4 font-medium">
-          📅 Date: {localDate} | 🕓 Time: {localTime}
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map((prayer) => (
-            <div
-              key={prayer}
-              className="flex flex-col items-center justify-center bg-blue-50 rounded-xl py-4 px-6 shadow hover:shadow-lg transition"
-            >
-              <h3 className="text-xl font-semibold text-blue-700 mb-1">{prayer}</h3>
-              <p className="text-2xl font-mono text-gray-900">
-                {formatTimeTo12Hour(prayerTimes[prayer])}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+  const formatTime12 = (dateTime) => {
+    if (!dateTime) return "";
+    return dateTime.toLocaleString(DateTime.TIME_SIMPLE);
   };
 
   return (
@@ -131,33 +79,67 @@ export default function App() {
 
       <div className="flex flex-col sm:flex-row items-center gap-6 w-full max-w-xl mb-6">
         <input
-          ref={inputRef}
           type="text"
           placeholder="Enter city name..."
           value={city}
           onChange={(e) => setCity(e.target.value)}
           disabled={loading}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && city) fetchPrayerTimes();
+            if (e.key === "Enter" && city) fetchTimes();
           }}
           className="w-full px-5 py-3 rounded-lg border border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:border-blue-600 text-gray-900 placeholder-gray-400 shadow-sm transition duration-300"
         />
 
-        <PrimaryButton onClick={fetchPrayerTimes} disabled={!city || loading}>
+        <button
+          onClick={fetchTimes}
+          disabled={!city || loading}
+          className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition duration-300"
+        >
           {loading ? "Searching..." : "Get Times"}
-        </PrimaryButton>
+        </button>
       </div>
 
       {error && (
-        <p className="text-red-600 mt-4 font-medium text-center max-w-xl">
-          {error}
-        </p>
+        <p className="text-red-600 mt-4 font-medium text-center max-w-xl">{error}</p>
       )}
 
-      {cityTimes && pakistanTimes && (
+      {cityTimes && (
         <div className="flex flex-col sm:flex-row sm:justify-between gap-8 mt-8 w-full max-w-5xl">
-          {renderPrayerCards(cityTimes.timings, `🕌 ${searchedCity} Prayer Times`, cityTimes.timezone)}
-          {renderPrayerCards(pakistanTimes.timings, `🇵🇰 Pakistan Prayer Times`, pakistanTimes.timezone)}
+          {/* Left side - Prayer times */}
+          <div className="bg-white rounded-3xl shadow-xl p-6 w-full sm:w-[48%]">
+            <h2 className="text-2xl font-bold text-center text-blue-800 mb-2">
+              🕌 {searchedCity} Prayer Times
+            </h2>
+            <p className="text-center text-gray-600 mb-1 font-medium">
+              🕒 Timezone: {cityTimezone}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map((prayer) => (
+                <div
+                  key={prayer}
+                  className="flex flex-col items-center justify-center bg-blue-50 rounded-xl py-4 px-6 shadow hover:shadow-lg transition"
+                >
+                  <h3 className="text-xl font-semibold text-blue-700 mb-1">{prayer}</h3>
+                  <p className="text-2xl font-mono text-gray-900">{cityTimes[prayer]}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right side - Show only if city is NOT Pakistan timezone */}
+          {cityTimezone !== "Asia/Karachi" && (
+            <div className="bg-white rounded-3xl shadow-xl p-6 w-full sm:w-[48%] flex flex-col justify-center items-center text-center text-lg font-semibold text-gray-900">
+              <p>
+                Jab <span className="font-bold text-blue-700">{searchedCity}</span> mein Fajr{" "}
+                <span className="font-mono text-blue-700 text-xl">{cityTimes.Fajr}</span> ho raha
+                ho, to Pakistan mein 🕓{" "}
+                <span className="font-mono text-blue-700 text-xl">
+                  {formatTime12(pakistanFajrTime)}
+                </span>{" "}
+                ho raha hoga.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
